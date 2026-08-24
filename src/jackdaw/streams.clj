@@ -8,12 +8,18 @@
   (:import org.apache.kafka.streams.KafkaStreams
            org.apache.kafka.streams.StreamsBuilder
            org.apache.kafka.streams.KafkaStreams$State
+           org.apache.kafka.streams.KafkaStreams$StateListener
            org.apache.kafka.streams.Topology
            [org.apache.kafka.streams
             KeyQueryMetadata StreamsMetadata StoreQueryParameters KeyValue]
            [org.apache.kafka.streams.state
             HostInfo KeyValueIterator QueryableStoreTypes ReadOnlyKeyValueStore]
-           org.apache.kafka.common.serialization.Serializer))
+           org.apache.kafka.common.serialization.Serializer
+           [org.apache.kafka.common TopicPartition]
+           [org.apache.kafka.streams.errors
+            StreamsUncaughtExceptionHandler
+            StreamsUncaughtExceptionHandler$StreamThreadExceptionResponse]
+           [org.apache.kafka.streams.processor StateRestoreListener]))
 
 (set! *warn-on-reflection* true)
 
@@ -476,3 +482,74 @@
   "Returns the approximate number of entries in a read-only key/value `store`."
   [^ReadOnlyKeyValueStore store]
   (.approximateNumEntries store))
+
+(defn set-state-listener
+  "Registers `f` as a Kafka Streams state listener and returns `k-streams`.
+
+  `f` is called with the new state and old state whenever the lifecycle state
+  changes."
+  [^KafkaStreams k-streams f]
+  (.setStateListener k-streams
+                     (reify KafkaStreams$StateListener
+                       (^void onChange [_
+                                        ^KafkaStreams$State new-state
+                                        ^KafkaStreams$State old-state]
+                         (f new-state old-state))))
+  k-streams)
+
+(defn set-uncaught-exception-handler
+  "Registers `f` as the uncaught stream-thread exception handler.
+
+  `f` receives the thrown `Throwable` and must return a
+  `StreamThreadExceptionResponse`."
+  [^KafkaStreams k-streams f]
+  (.setUncaughtExceptionHandler
+   k-streams
+   (reify StreamsUncaughtExceptionHandler
+     (^StreamsUncaughtExceptionHandler$StreamThreadExceptionResponse
+      handle [_ ^Throwable exception]
+       (f exception))))
+  k-streams)
+
+(defn set-global-state-restore-listener
+  "Registers callbacks for global state-store restoration and returns
+  `k-streams`.
+
+  `callbacks` may contain `:on-restore-start`, `:on-batch-restored`, and
+  `:on-restore-end` functions. Each receives the arguments supplied by Kafka's
+  `StateRestoreListener` method with the corresponding name."
+  [^KafkaStreams k-streams {:keys [on-restore-start on-batch-restored on-restore-end]}]
+  (let [on-restore-start (or on-restore-start (fn [& _] nil))
+        on-batch-restored (or on-batch-restored (fn [& _] nil))
+        on-restore-end (or on-restore-end (fn [& _] nil))]
+    (.setGlobalStateRestoreListener
+     k-streams
+     (reify StateRestoreListener
+       (^void onRestoreStart [_
+                              ^TopicPartition topic-partition
+                              ^String store-name
+                              ^long starting-offset
+                              ^long ending-offset]
+         (on-restore-start topic-partition store-name starting-offset ending-offset))
+       (^void onBatchRestored [_
+                               ^TopicPartition topic-partition
+                               ^String store-name
+                               ^long batch-end-offset
+                               ^long num-restored]
+         (on-batch-restored topic-partition store-name batch-end-offset num-restored))
+       (^void onRestoreEnd [_
+                            ^TopicPartition topic-partition
+                            ^String store-name
+                            ^long total-restored]
+         (on-restore-end topic-partition store-name total-restored)))))
+  k-streams)
+
+(defn metrics
+  "Returns the Kafka Streams metrics map."
+  [^KafkaStreams k-streams]
+  (.metrics k-streams))
+
+(defn local-threads-metadata
+  "Returns metadata for the locally running Kafka Streams threads."
+  [^KafkaStreams k-streams]
+  (.metadataForLocalThreads k-streams))

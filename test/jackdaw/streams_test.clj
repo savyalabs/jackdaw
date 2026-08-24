@@ -23,6 +23,32 @@
 
 (stest/instrument)
 
+(deftest kafka-streams-lifecycle-observability
+  (let [builder (k/streams-builder)
+        _stream (k/kstream builder (mock/topic "input-topic"))
+        streams (k/kafka-streams builder {"application.id" "lifecycle-test"
+                                          "bootstrap.servers" "localhost:9092"
+                                          "state.dir" "/tmp/jackdaw-lifecycle-test"})]
+    (try
+      (testing "registers lifecycle callbacks"
+        (is (identical? streams
+                       (k/set-state-listener streams (fn [_new-state _old-state] nil))))
+        (is (identical? streams
+                       (k/set-uncaught-exception-handler streams (fn [_exception]
+                                                                    org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler$StreamThreadExceptionResponse/SHUTDOWN_CLIENT)))))
+      (testing "registers restore callbacks"
+        (is (identical? streams
+                       (k/set-global-state-restore-listener
+                        streams
+                        {:on-restore-start (fn [& _] nil)
+                         :on-batch-restored (fn [& _] nil)
+                         :on-restore-end (fn [& _] nil)}))))
+      (testing "exposes local metadata and metrics without starting"
+        (is (instance? java.util.Set (k/local-threads-metadata streams)))
+        (is (instance? java.util.Map (k/metrics streams))))
+      (finally
+        (k/close streams)))))
+
 (deftest streams-builder
   (testing "kstream"
     (let [streams-builder (interop/streams-builder)
