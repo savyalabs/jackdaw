@@ -209,4 +209,3 @@ one error path.
 `d/future` starts the blocking Jackdaw admin call off-thread, and `d/catch` propagates
 the failure through the returned deferred. Close the `AdminClient` in the application's
 normal lifecycle path after all dependent deferred operations have completed.
-

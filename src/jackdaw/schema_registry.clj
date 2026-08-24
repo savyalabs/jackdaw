@@ -12,45 +12,45 @@
 (set! *warn-on-reflection* true)
 
 (defn client
-  "Create a cached HTTP Schema Registry client." 
+  "Create a cached HTTP Schema Registry client."
   ^SchemaRegistryClient [^String url max-capacity]
   {:pre [(string? url) (pos-int? max-capacity)]}
   (CachedSchemaRegistryClient. url ^int max-capacity))
 
 (defn client?
-  "Return true when x is a Schema Registry client." 
+  "Return true when x is a Schema Registry client."
   [x]
   (instance? SchemaRegistryClient x))
 
 (defn list-subjects
-  "Return all registered subjects in deterministic order." 
+  "Return all registered subjects in deterministic order."
   [^SchemaRegistryClient client]
   {:pre [(client? client)]}
   (->> (.getAllSubjects client) sort vec))
 
 (defn register-schema!
-  "Register a ParsedSchema under subject and return its integer ID." 
+  "Register a ParsedSchema under subject and return its integer ID."
   [^SchemaRegistryClient client ^String subject schema]
   {:pre [(client? client) (string? subject)
          (instance? io.confluent.kafka.schemaregistry.ParsedSchema schema)]}
   (.register client subject ^io.confluent.kafka.schemaregistry.ParsedSchema schema))
 
 (defn schema-version
-  "Return the version of schema registered under subject." 
+  "Return the version of schema registered under subject."
   [^SchemaRegistryClient client ^String subject schema]
   {:pre [(client? client) (string? subject)
          (instance? io.confluent.kafka.schemaregistry.ParsedSchema schema)]}
   (.getVersion client subject ^io.confluent.kafka.schemaregistry.ParsedSchema schema))
 
 (defn compatible?
-  "Return whether schema is compatible with the subject's latest version." 
+  "Return whether schema is compatible with the subject's latest version."
   [^SchemaRegistryClient client ^String subject schema]
   {:pre [(client? client) (string? subject)
          (instance? io.confluent.kafka.schemaregistry.ParsedSchema schema)]}
   (.testCompatibility client subject ^io.confluent.kafka.schemaregistry.ParsedSchema schema))
 
 (defn schema-versions
-  "Return all registered versions for subject." 
+  "Return all registered versions for subject."
   [^SchemaRegistryClient client ^String subject]
   {:pre [(client? client) (string? subject)]}
   (vec (.getAllVersions client subject)))
@@ -77,19 +77,19 @@
 (defn get-config
   "Return subject configuration as a Clojure map.
 
-  Pass the empty subject to read the global configuration." 
+  Pass the empty subject to read the global configuration."
   [^SchemaRegistryClient client ^String subject]
   {:pre [(client? client) (string? subject)]}
   (config->map (.getConfig client subject)))
 
 (defn set-config!
-  "Set subject configuration and return the resulting configuration map." 
+  "Set subject configuration and return the resulting configuration map."
   [^SchemaRegistryClient client ^String subject config]
   {:pre [(client? client) (string? subject)]}
   (config->map (.updateConfig client subject (->config config))))
 
 (defn delete-schema-version!
-  "Delete one schema version and return the deleted version." 
+  "Delete one schema version and return the deleted version."
   ([client subject version]
    (delete-schema-version! client subject version false))
   ([^SchemaRegistryClient client ^String subject version permanent?]
@@ -98,7 +98,7 @@
    (.deleteSchemaVersion client subject (str version) (boolean permanent?))))
 
 (defn delete-subject!
-  "Delete a subject and return its deleted version numbers." 
+  "Delete a subject and return its deleted version numbers."
   ([client subject]
    (delete-subject! client subject false))
   ([^SchemaRegistryClient client ^String subject permanent?]
