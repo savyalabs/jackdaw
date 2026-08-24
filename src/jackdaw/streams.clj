@@ -8,7 +8,12 @@
   (:import org.apache.kafka.streams.KafkaStreams
            org.apache.kafka.streams.StreamsBuilder
            org.apache.kafka.streams.KafkaStreams$State
-           org.apache.kafka.streams.Topology))
+           org.apache.kafka.streams.Topology
+           [org.apache.kafka.streams
+            KeyQueryMetadata StreamsMetadata StoreQueryParameters KeyValue]
+           [org.apache.kafka.streams.state
+            HostInfo KeyValueIterator QueryableStoreTypes ReadOnlyKeyValueStore]
+           org.apache.kafka.common.serialization.Serializer))
 
 (set! *warn-on-reflection* true)
 
@@ -376,3 +381,98 @@
   `state->keyword`)."
   [^KafkaStreams k-streams]
   (-> k-streams .state state->keyword))
+
+;; Interactive queries
+
+(defn- host-info->data
+  [^HostInfo host-info]
+  (when host-info
+    {:host (.host host-info)
+     :port (.port host-info)}))
+
+(defn- streams-metadata->data
+  [^StreamsMetadata metadata]
+  {:host-info (host-info->data (.hostInfo metadata))
+   :host (.host metadata)
+   :port (.port metadata)
+   :state-store-names (set (.stateStoreNames metadata))
+   :topic-partitions (set (.topicPartitions metadata))
+   :standby-topic-partitions (set (.standbyTopicPartitions metadata))
+   :standby-state-store-names (set (.standbyStateStoreNames metadata))})
+
+(defn- key-query-metadata->data
+  [^KeyQueryMetadata metadata]
+  {:active-host (host-info->data (.activeHost metadata))
+   :standby-hosts (set (map host-info->data (.standbyHosts metadata)))
+   :partition (.partition metadata)})
+
+(defn metadata-for-all-streams-clients
+  "Returns metadata for every Kafka Streams instance in the application.
+
+  Each metadata entry is a map containing host/port and the stores and
+  partitions assigned to that instance."
+  [^KafkaStreams k-streams]
+  (mapv streams-metadata->data (.metadataForAllStreamsClients k-streams)))
+
+(defn streams-metadata-for-store
+  "Returns metadata for the Kafka Streams instances hosting `store-name`."
+  [^KafkaStreams k-streams ^String store-name]
+  (mapv streams-metadata->data (.streamsMetadataForStore k-streams store-name)))
+
+(defn query-metadata-for-key
+  "Returns the active and standby hosts for `key` in `store-name`.
+
+  `serializer` is used by Kafka Streams to determine the key's partition."
+  [^KafkaStreams k-streams ^String store-name key ^Serializer serializer]
+  (key-query-metadata->data
+   (.queryMetadataForKey k-streams store-name key serializer)))
+
+(defn store
+  "Returns a local read-only key/value store.
+
+  Optional options are `:partition` to query one partition and
+  `:stale-stores?` to allow querying stale stores."
+  ([^KafkaStreams k-streams ^String store-name]
+   (store k-streams store-name {}))
+  ([^KafkaStreams k-streams ^String store-name
+    {:keys [partition stale-stores?]}]
+   (let [params (StoreQueryParameters/fromNameAndType
+                 store-name
+                 (QueryableStoreTypes/keyValueStore))
+         ^StoreQueryParameters params (cond-> params
+                                        (some? partition)
+                                        (.withPartition (int partition))
+                                        stale-stores?
+                                        (.enableStaleStores))]
+     (.store k-streams params))))
+
+(defn store-get
+  "Returns the value for `key` in a read-only key/value `store`."
+  [^ReadOnlyKeyValueStore store key]
+  (.get store key))
+
+(defn- store-iterator->vec
+  [^KeyValueIterator iterator]
+  (try
+    (loop [entries []]
+      (if (.hasNext iterator)
+        (let [^KeyValue entry (.next iterator)]
+          (recur (conj entries [(.key entry) (.value entry)])))
+        entries))
+    (finally
+      (.close iterator))))
+
+(defn store-range
+  "Returns `[key value]` pairs in the inclusive range `from-key` to `to-key`."
+  [^ReadOnlyKeyValueStore store from-key to-key]
+  (store-iterator->vec (.range store from-key to-key)))
+
+(defn store-all
+  "Returns all `[key value]` pairs in a read-only key/value `store`."
+  [^ReadOnlyKeyValueStore store]
+  (store-iterator->vec (.all store)))
+
+(defn store-approximate-num-entries
+  "Returns the approximate number of entries in a read-only key/value `store`."
+  [^ReadOnlyKeyValueStore store]
+  (.approximateNumEntries store))

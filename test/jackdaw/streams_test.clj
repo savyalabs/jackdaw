@@ -16,6 +16,7 @@
             JoinWindows SessionWindows TimeWindows Transformer
             ValueTransformer]
            org.apache.kafka.streams.StreamsBuilder
+           org.apache.kafka.streams.TopologyTestDriver
            [org.apache.kafka.common.serialization Serdes]))
 
 (set! *warn-on-reflection* false)
@@ -53,6 +54,32 @@
 
   (testing "streams-builder"
     (is (satisfies? IStreamsBuilder (k/streams-builder)))))
+
+(deftest interactive-query-functions-test
+  (testing "interactive query functions are part of the public streams API"
+    (doseq [function-name '[store
+                            store-get
+                            store-range
+                            store-all
+                            store-approximate-num-entries
+                            metadata-for-all-streams-clients
+                            streams-metadata-for-store
+                            query-metadata-for-key]]
+      (is (fn? (deref (ns-resolve 'jackdaw.streams function-name)))
+          (str "missing jackdaw.streams/" function-name)))))
+
+(deftest local-key-value-store-query-test
+  (let [input-topic (mock/topic "query-input")]
+    (with-open [^TopologyTestDriver driver (mock/build-driver
+                                            (fn [builder]
+                                              (k/ktable builder input-topic "query-store")))]
+      (mock/publish driver input-topic 1 10)
+      (mock/publish driver input-topic 2 20)
+      (let [store (.getKeyValueStore driver "query-store")]
+        (is (= 10 (k/store-get store 1)))
+        (is (= [[1 10]] (k/store-range store 1 1)))
+        (is (= [[1 10] [2 20]] (k/store-all store)))
+        (is (= 2 (k/store-approximate-num-entries store)))))))
 
 (defn safe-add [& args]
   (apply + (filter some? args)))
