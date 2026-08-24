@@ -46,6 +46,10 @@ Jackdaw 1.3.6 requires **Clojure >= 1.10**, **JDK 17+**, and **Apache Kafka 4.x*
 
 You can find all the documentation on [cljdoc](https://cljdoc.org/d/net.clojars.savya/jackdaw).
 
+The [production patterns guide](doc/production.md) covers transactional producers,
+SASL/SSL configuration, interactive state-store queries, graceful Streams shutdown,
+and error handling.
+
 ## Examples
 
 - [Pipe](https://github.com/jsavyasachi/jackdaw/tree/main/examples/pipe)
