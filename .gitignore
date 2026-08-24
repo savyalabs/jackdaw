@@ -22,3 +22,5 @@ pom.xml.asc
 .calva/.cpcache/
 target/
 release-notes.md
+.worktrees/
+.codex-runs/
