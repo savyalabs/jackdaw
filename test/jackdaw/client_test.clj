@@ -8,8 +8,9 @@
             [jackdaw.data :as data])
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]
            java.time.Duration
-           [org.apache.kafka.clients.consumer Consumer ConsumerRecord ConsumerRecords]
-           [org.apache.kafka.clients.producer Producer]
+           [org.apache.kafka.clients.consumer Consumer ConsumerRecord ConsumerRecords
+            MockConsumer OffsetAndMetadata OffsetResetStrategy]
+           [org.apache.kafka.clients.producer MockProducer Producer]
            org.apache.kafka.common.TopicPartition))
 
 (set! *warn-on-reflection* false)
@@ -242,6 +243,57 @@
      {(TopicPartition. topic partition)
       (map (fn [[k v]]
              (ConsumerRecord. topic partition offset k v)) data)})))
+
+(deftest producer-transactions-test
+  (let [producer (MockProducer.)
+        consumer (MockConsumer. OffsetResetStrategy/EARLIEST)
+        topic-partition (TopicPartition. "transactions" 0)
+        offsets {topic-partition (OffsetAndMetadata. 3)}]
+    (is (identical? producer (client/init-transactions! producer)))
+    (is (.transactionInitialized producer))
+    (is (identical? producer (client/begin-transaction! producer)))
+    (is (.transactionInFlight producer))
+    (is (identical? producer
+                   (client/send-offsets-to-transaction!
+                    producer offsets (.groupMetadata consumer))))
+    (is (.sentOffsets producer))
+    (is (identical? producer (client/commit-transaction! producer)))
+    (is (.transactionCommitted producer))
+
+    (client/begin-transaction! producer)
+    (is (identical? producer (client/abort-transaction! producer)))
+    (is (.transactionAborted producer))))
+
+(deftest consumer-commit-pause-and-rebalance-test
+  (let [consumer (MockConsumer. OffsetResetStrategy/EARLIEST)
+        topic-partition (TopicPartition. "commits" 0)
+        offsets {topic-partition (OffsetAndMetadata. 7)}
+        revoked (promise)
+        assigned (promise)
+        listener (client/rebalance-listener
+                  (fn [partitions] (deliver revoked partitions))
+                  (fn [partitions] (deliver assigned partitions)))]
+    (is (identical? consumer (client/commit-sync! consumer offsets)))
+    (is (= (OffsetAndMetadata. 0)
+           (get (client/committed consumer [topic-partition]) topic-partition)))
+    (is (identical? consumer (client/commit-sync! consumer)))
+    (is (identical? consumer (client/commit-sync! consumer 10)))
+    (is (identical? consumer (client/commit-async! consumer)))
+    (is (identical? consumer (client/commit-async! consumer offsets nil)))
+
+    (client/assign consumer topic-partition)
+    (is (identical? consumer (client/pause consumer [topic-partition])))
+    (is (= #{topic-partition} (.paused consumer)))
+    (is (identical? consumer (client/resume consumer [topic-partition])))
+    (is (empty? (.paused consumer)))
+
+    (let [listener-consumer (MockConsumer. OffsetResetStrategy/EARLIEST)]
+      (is (identical? listener-consumer
+                     (client/subscribe listener-consumer
+                                       [{:topic-name "commits"}]
+                                       listener)))
+      (.rebalance listener-consumer [topic-partition]))
+    (is (= #{topic-partition} (set @assigned)))))
 
 (deftest poll-test
   (let [q (LinkedBlockingQueue.)
