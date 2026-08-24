@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.4.0] - 2026-08-24
+
+### Added
+
+- Kafka Streams interactive state-store query wrappers for local key/value
+  lookups, store metadata, and remote-instance routing.
+- Expanded Kafka Admin operational APIs for partition increases,
+  consumer-group descriptions and offsets, ACLs, quotas, log directories, and
+  partition reassignment.
+- Transactional producer helpers and consumer commit, pause, and rebalance
+  listener wrappers.
+- Kafka Streams DSL option builders for Named, Materialized, Grouped, Joined,
+  StreamJoined, Repartitioned, Produced, and Consumed.
+- Streams lifecycle and observability wrappers for state listeners, uncaught
+  exception handlers, restore listeners, metrics, and thread metadata.
+- Schema Registry management API for subject listing, registration, and
+  compatibility checks.
+- Failure-focused tests covering transactional, commit, rebalance, and
+  reassignment error paths using Kafka's own Mock classes.
+- Expanded production-configuration examples in the documentation.
+
 ## [1.3.9] - 2026-08-17
 
 ### Fixed

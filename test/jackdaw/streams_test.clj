@@ -16,11 +16,38 @@
             JoinWindows SessionWindows TimeWindows Transformer
             ValueTransformer]
            org.apache.kafka.streams.StreamsBuilder
+           org.apache.kafka.streams.TopologyTestDriver
            [org.apache.kafka.common.serialization Serdes]))
 
 (set! *warn-on-reflection* false)
 
 (stest/instrument)
+
+(deftest kafka-streams-lifecycle-observability
+  (let [builder (k/streams-builder)
+        _stream (k/kstream builder (mock/topic "input-topic"))
+        streams (k/kafka-streams builder {"application.id" "lifecycle-test"
+                                          "bootstrap.servers" "localhost:9092"
+                                          "state.dir" "/tmp/jackdaw-lifecycle-test"})]
+    (try
+      (testing "registers lifecycle callbacks"
+        (is (identical? streams
+                       (k/set-state-listener streams (fn [_new-state _old-state] nil))))
+        (is (identical? streams
+                       (k/set-uncaught-exception-handler streams (fn [_exception]
+                                                                    org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler$StreamThreadExceptionResponse/SHUTDOWN_CLIENT)))))
+      (testing "registers restore callbacks"
+        (is (identical? streams
+                       (k/set-global-state-restore-listener
+                        streams
+                        {:on-restore-start (fn [& _] nil)
+                         :on-batch-restored (fn [& _] nil)
+                         :on-restore-end (fn [& _] nil)}))))
+      (testing "exposes local metadata and metrics without starting"
+        (is (instance? java.util.Set (k/local-threads-metadata streams)))
+        (is (instance? java.util.Map (k/metrics streams))))
+      (finally
+        (k/close streams)))))
 
 (deftest streams-builder
   (testing "kstream"
@@ -53,6 +80,32 @@
 
   (testing "streams-builder"
     (is (satisfies? IStreamsBuilder (k/streams-builder)))))
+
+(deftest interactive-query-functions-test
+  (testing "interactive query functions are part of the public streams API"
+    (doseq [function-name '[store
+                            store-get
+                            store-range
+                            store-all
+                            store-approximate-num-entries
+                            metadata-for-all-streams-clients
+                            streams-metadata-for-store
+                            query-metadata-for-key]]
+      (is (fn? (deref (ns-resolve 'jackdaw.streams function-name)))
+          (str "missing jackdaw.streams/" function-name)))))
+
+(deftest local-key-value-store-query-test
+  (let [input-topic (mock/topic "query-input")]
+    (with-open [^TopologyTestDriver driver (mock/build-driver
+                                            (fn [builder]
+                                              (k/ktable builder input-topic "query-store")))]
+      (mock/publish driver input-topic 1 10)
+      (mock/publish driver input-topic 2 20)
+      (let [store (.getKeyValueStore driver "query-store")]
+        (is (= 10 (k/store-get store 1)))
+        (is (= [[1 10]] (k/store-range store 1 1)))
+        (is (= [[1 10] [2 20]] (k/store-all store)))
+        (is (= 2 (k/store-approximate-num-entries store)))))))
 
 (defn safe-add [& args]
   (apply + (filter some? args)))

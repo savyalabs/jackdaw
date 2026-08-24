@@ -14,7 +14,8 @@
   (:import java.time.Duration
            java.util.Collection
            [org.apache.kafka.clients.consumer
-            Consumer KafkaConsumer OffsetAndTimestamp]
+            Consumer ConsumerGroupMetadata ConsumerRebalanceListener KafkaConsumer
+            OffsetAndMetadata OffsetAndTimestamp OffsetCommitCallback]
            [org.apache.kafka.clients.producer
             Callback KafkaProducer Producer ProducerRecord]
            [org.apache.kafka.common
@@ -87,6 +88,52 @@
    (send! producer
           (jd/->ProducerRecord topic partition timestamp key value headers))))
 
+(defn init-transactions!
+  "Initialize the producer for transactions. Returns the producer."
+  [^Producer producer]
+  (.initTransactions producer)
+  producer)
+
+(defn begin-transaction!
+  "Begin a transaction on the producer. Returns the producer."
+  [^Producer producer]
+  (.beginTransaction producer)
+  producer)
+
+(defn commit-transaction!
+  "Commit the current producer transaction. Returns the producer."
+  [^Producer producer]
+  (.commitTransaction producer)
+  producer)
+
+(defn abort-transaction!
+  "Abort the current producer transaction. Returns the producer."
+  [^Producer producer]
+  (.abortTransaction producer)
+  producer)
+
+(defn- as-offset-and-metadata [offset]
+  (cond
+    (instance? OffsetAndMetadata offset) offset
+    (map? offset) (OffsetAndMetadata. (long (:offset offset)))
+    :else (OffsetAndMetadata. (long offset))))
+
+(defn- as-offsets [offsets]
+  (into {}
+        (map (fn [[topic-partition offset]]
+               [(jd/as-TopicPartition topic-partition)
+                (as-offset-and-metadata offset)]))
+        offsets))
+
+(defn send-offsets-to-transaction!
+  "Send consumer offsets to the current producer transaction. Returns the producer.
+
+  `offsets` maps topic-partitions (Kafka instances or Jackdaw maps) to offsets,
+  offset metadata maps, or `OffsetAndMetadata` instances."
+  [^Producer producer offsets ^ConsumerGroupMetadata group-metadata]
+  (.sendOffsetsToTransaction producer (as-offsets offsets) group-metadata)
+  producer)
+
 ;;;; Consumer
 
 (defn consumer
@@ -124,15 +171,108 @@
   "Subscribe a consumer to the specified topics.
 
   Returns the consumer."
-  ^KafkaConsumer [^KafkaConsumer consumer topic-configs]
-  (.subscribe consumer
-              ^Collection (mapv (fn [{:keys [topic-name] :as t}]
-                                  (when-not (string? topic-name)
-                                    (throw (ex-info "No name for topic!"
-                                                    {:topic t})))
-                                  topic-name)
-                                topic-configs))
+  (^Consumer [^Consumer consumer topic-configs]
+   (.subscribe consumer ^Collection (mapv (fn [{:keys [topic-name] :as t}]
+                                             (when-not (string? topic-name)
+                                               (throw (ex-info "No name for topic!"
+                                                               {:topic t})))
+                                             topic-name)
+                                           topic-configs))
+   consumer)
+  (^Consumer [^Consumer consumer topic-configs ^ConsumerRebalanceListener listener]
+   (.subscribe consumer
+               ^Collection (mapv (fn [{:keys [topic-name] :as t}]
+                                   (when-not (string? topic-name)
+                                     (throw (ex-info "No name for topic!"
+                                                     {:topic t})))
+                                   topic-name)
+                                 topic-configs)
+               listener)
+   consumer))
+
+(defn offset-commit-callback
+  "Return a Kafka offset commit callback from a two-argument function."
+  ^OffsetCommitCallback [on-completion]
+  (reify OffsetCommitCallback
+    (onComplete [_this offsets exception]
+      (on-completion offsets exception))))
+
+(defn- as-duration [timeout]
+  (if (instance? Duration timeout)
+    timeout
+    (Duration/ofMillis (long timeout))))
+
+(defn commit-sync!
+  "Synchronously commit consumer offsets. Returns the consumer.
+
+  Offsets may be omitted, and timeout may be a Duration or milliseconds."
+  (^Consumer [^Consumer consumer]
+   (.commitSync consumer)
+   consumer)
+  (^Consumer [^Consumer consumer offsets]
+   (if (map? offsets)
+     (.commitSync consumer ^java.util.Map (as-offsets offsets))
+     (.commitSync consumer ^Duration (as-duration offsets)))
+   consumer)
+  (^Consumer [^Consumer consumer offsets timeout]
+   (.commitSync consumer
+                ^java.util.Map (as-offsets offsets)
+                ^Duration (as-duration timeout))
+   consumer))
+
+(defn commit-async!
+  "Asynchronously commit consumer offsets. Returns the consumer."
+  (^Consumer [^Consumer consumer]
+   (.commitAsync consumer)
+   consumer)
+  (^Consumer [^Consumer consumer on-completion]
+   (.commitAsync consumer
+                 ^OffsetCommitCallback (when on-completion
+                                         (offset-commit-callback on-completion)))
+   consumer)
+  (^Consumer [^Consumer consumer offsets on-completion]
+   (.commitAsync consumer
+                 ^java.util.Map (as-offsets offsets)
+                 ^OffsetCommitCallback (when on-completion
+                                         (offset-commit-callback on-completion)))
+   consumer))
+
+(defn committed
+  "Return committed offsets for the supplied topic-partitions."
+  (^java.util.Map [^Consumer consumer topic-partitions]
+   (.committed consumer
+               ^java.util.Set (set (map jd/as-TopicPartition topic-partitions))))
+  (^java.util.Map [^Consumer consumer topic-partitions timeout]
+   (.committed consumer
+               ^java.util.Set (set (map jd/as-TopicPartition topic-partitions))
+               ^Duration (as-duration timeout))))
+
+(defn pause
+  "Pause fetching from the supplied topic-partitions. Returns the consumer."
+  [^Consumer consumer topic-partitions]
+  (.pause consumer ^Collection (mapv jd/as-TopicPartition topic-partitions))
   consumer)
+
+(defn resume
+  "Resume fetching from the supplied topic-partitions. Returns the consumer."
+  [^Consumer consumer topic-partitions]
+  (.resume consumer ^Collection (mapv jd/as-TopicPartition topic-partitions))
+  consumer)
+
+(defn rebalance-listener
+  "Return a Kafka rebalance listener from revoked and assigned callbacks."
+  ^ConsumerRebalanceListener
+  ([on-revoked on-assigned]
+   (rebalance-listener on-revoked on-assigned (constantly nil)))
+  ([on-revoked on-assigned on-lost]
+   (reify ConsumerRebalanceListener
+     (onPartitionsRevoked [_this partitions]
+       (when on-revoked (on-revoked partitions)))
+     (onPartitionsAssigned [_this partitions]
+       (when on-assigned (on-assigned partitions)))
+     (onPartitionsLost [_this partitions]
+       (when on-lost (on-lost partitions))))))
+
 
 (defn subscribed-consumer
   "Given a broker configuration and topics, returns a consumer that is

@@ -14,11 +14,23 @@
 (extend MockAdminClient
   admin/Client
   (-> admin/client-impl
-      (merge {:alter-topics* (fn [_this topics]
+              (merge {:alter-topics* (fn [_this topics]
                                (d/future [:altered topics]))
               :describe-configs* (fn [_this configs]
                                    (d/future
-                                     (into {} (map #(vector % {"some-key" "some-value"}) configs))))})))
+                                     (into {} (map #(vector % {"some-key" "some-value"}) configs))))
+              :create-partitions* (fn [_this partitions] (d/future partitions))
+              :describe-consumer-groups* (fn [_this group-ids] (d/future group-ids))
+              :list-consumer-group-offsets* (fn [_this group-offsets] (d/future group-offsets))
+              :describe-acls* (fn [_this filter] (d/future filter))
+              :create-acls* (fn [_this acls] (d/future acls))
+              :delete-acls* (fn [_this filters] (d/future filters))
+              :describe-client-quotas* (fn [_this filter] (d/future filter))
+              :alter-client-quotas* (fn [_this alterations] (d/future alterations))
+              :describe-log-dirs* (fn [_this broker-ids] (d/future broker-ids))
+              :alter-partition-reassignments* (fn [_this reassignments] (d/future reassignments))
+              :list-partition-reassignments* (fn [_this partitions] (d/future partitions))
+              :describe-metadata-quorum* (fn [_this] (d/future :quorum))})))
 
 (defn set= [a b]
   (= (set a)
@@ -180,3 +192,46 @@
                     (map :name (keys description))))
           (doseq [cfg (vals description)]
             (is (set= {"some-key" "some-value"} cfg))))))))
+
+(deftest test-operational-admin-client-operations
+  (is (every? #(contains? admin/client-impl %)
+              [:create-partitions*
+               :describe-consumer-groups*
+               :list-consumer-group-offsets*
+               :describe-acls*
+               :create-acls*
+               :delete-acls*
+               :describe-client-quotas*
+               :alter-client-quotas*
+               :describe-log-dirs*
+               :alter-partition-reassignments*
+               :list-partition-reassignments*
+               :describe-metadata-quorum*])))
+
+(deftest test-operational-admin-functions
+  (with-mock-admin-client test-cluster
+    (fn [client]
+      (let [partitions {"foo" :new-partitions}
+            group-ids ["group-a"]
+            offsets {"group-a" :offset-spec}
+            filter :acl-filter
+            acls [:acl]
+            filters [:acl-filter]
+            alterations [:quota-alteration]
+            broker-ids [0 1]
+            reassignments {:partition :reassignment}
+            partitions-to-list [:partition-a]]
+        (is (= partitions (admin/create-partitions! client partitions)))
+        (is (= group-ids (admin/describe-consumer-groups client group-ids)))
+        (is (= offsets (admin/list-consumer-group-offsets client offsets)))
+        (is (= filter (admin/describe-acls client filter)))
+        (is (= acls (admin/create-acls! client acls)))
+        (is (= filters (admin/delete-acls! client filters)))
+        (is (= filter (admin/describe-client-quotas client filter)))
+        (is (= alterations (admin/alter-client-quotas! client alterations)))
+        (is (= broker-ids (admin/describe-log-dirs client broker-ids)))
+        (is (= reassignments
+               (admin/alter-partition-reassignments! client reassignments)))
+        (is (= partitions-to-list
+               (admin/list-partition-reassignments client partitions-to-list)))
+        (is (= :quorum (admin/describe-metadata-quorum client)))))))

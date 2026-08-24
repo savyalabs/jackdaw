@@ -20,7 +20,7 @@
             Initializer Joined StreamJoined
             JoinWindows KGroupedStream KGroupedTable KStream KTable
             KeyValueMapper Materialized Merger Predicate Printed Produced
-            Reducer Repartitioned SessionWindowedKStream SessionWindows
+            Named Reducer Repartitioned SessionWindowedKStream SessionWindows
             Suppressed Suppressed$BufferConfig TimeWindowedKStream ValueJoiner
             ValueMapper Windows ForeachAction]
            [org.apache.kafka.streams.processor.api
@@ -29,41 +29,194 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- apply-options
+  "Applies present entries in an options map to a Kafka Streams option object.
+  Each entry in `option-fns` maps a Clojure option key to a typed fluent
+  setter, keeping option-object construction consistent across DSL classes."
+  [option options option-fns]
+  (clojure.core/reduce (fn [option [key setter]]
+                         (let [value (get options key)]
+                           (if (some? value)
+                             (setter option value)
+                             option)))
+                       option
+                       option-fns))
+
+(defn named
+  "Builds a Kafka Streams `Named` from `:name`."
+  [{:keys [name]}]
+  (Named/as ^String name))
+
+(defn materialized
+  "Builds a Kafka Streams `Materialized` from a DSL options map.
+  Supports `:store-name`, serde options, logging and caching flags, topic
+  configuration, retention, and store suppliers."
+  [{:keys [store-name key-serde value-serde] :as options}]
+  (let [option (if store-name
+                 (Materialized/as ^String store-name)
+                 (Materialized/with key-serde value-serde))]
+    (apply-options
+     option
+     options
+     [[:key-serde (fn [^Materialized option ^org.apache.kafka.common.serialization.Serde serde]
+                    (.withKeySerde option serde))]
+      [:value-serde (fn [^Materialized option ^org.apache.kafka.common.serialization.Serde serde]
+                      (.withValueSerde option serde))]
+      [:logging-config (fn [^Materialized option config]
+                         (.withLoggingEnabled option config))]
+      [:logging-enabled (fn [^Materialized option enabled]
+                          (if enabled
+                            (.withLoggingEnabled option {})
+                            (.withLoggingDisabled option)))]
+      [:caching-enabled (fn [^Materialized option enabled]
+                          (if enabled
+                            (.withCachingEnabled option)
+                            (.withCachingDisabled option)))]
+      [:retention (fn [^Materialized option ^Duration retention]
+                    (.withRetention option retention))]
+      [:store-type (fn [^Materialized option store-type]
+                     (.withStoreType option store-type))]])))
+
+(defn grouped
+  "Builds a Kafka Streams `Grouped` from DSL options."
+  [{:keys [name key-serde value-serde] :as options}]
+  (let [option (cond
+                 (and key-serde value-serde)
+                 (if name
+                   (Grouped/with ^String name key-serde value-serde)
+                   (Grouped/with key-serde value-serde))
+                 name (Grouped/as ^String name)
+                 key-serde (Grouped/keySerde key-serde)
+                 :else (Grouped/valueSerde value-serde))]
+    (apply-options option options
+                   [[:name (fn [^Grouped option ^String name] (.withName option name))]
+                    [:key-serde (fn [^Grouped option ^org.apache.kafka.common.serialization.Serde serde]
+                                  (.withKeySerde option serde))]
+                    [:value-serde (fn [^Grouped option ^org.apache.kafka.common.serialization.Serde serde]
+                                    (.withValueSerde option serde))]])))
+
+(defn joined
+  "Builds a Kafka Streams `Joined` from DSL options."
+  [{:keys [name key-serde value-serde other-value-serde] :as options}]
+  (let [option (if (and key-serde value-serde other-value-serde)
+                 (Joined/with key-serde value-serde other-value-serde)
+                 (Joined/as ^String name))]
+    (apply-options option options
+                   [[:name (fn [^Joined option ^String name] (.withName option name))]
+                    [:key-serde (fn [^Joined option ^org.apache.kafka.common.serialization.Serde serde]
+                                  (.withKeySerde option serde))]
+                    [:value-serde (fn [^Joined option ^org.apache.kafka.common.serialization.Serde serde]
+                                    (.withValueSerde option serde))]
+                    [:other-value-serde (fn [^Joined option ^org.apache.kafka.common.serialization.Serde serde]
+                                          (.withOtherValueSerde option serde))]
+                    [:grace-period (fn [^Joined option ^Duration grace]
+                                     (.withGracePeriod option grace))]])))
+
+(defn stream-joined
+  "Builds a Kafka Streams `StreamJoined` from DSL options."
+  [{:keys [name key-serde value-serde other-value-serde] :as options}]
+  (let [option (if (and key-serde value-serde other-value-serde)
+                 (StreamJoined/with key-serde value-serde other-value-serde)
+                 (StreamJoined/as ^String name))]
+    (apply-options option options
+                   [[:name (fn [^StreamJoined option ^String name] (.withName option name))]
+                    [:store-name (fn [^StreamJoined option ^String store-name]
+                                   (.withStoreName option store-name))]
+                    [:key-serde (fn [^StreamJoined option ^org.apache.kafka.common.serialization.Serde serde]
+                                  (.withKeySerde option serde))]
+                    [:value-serde (fn [^StreamJoined option ^org.apache.kafka.common.serialization.Serde serde]
+                                    (.withValueSerde option serde))]
+                    [:other-value-serde (fn [^StreamJoined option ^org.apache.kafka.common.serialization.Serde serde]
+                                          (.withOtherValueSerde option serde))]
+                    [:logging-config (fn [^StreamJoined option config]
+                                       (.withLoggingEnabled option config))]
+                    [:logging-enabled (fn [^StreamJoined option enabled]
+                                        (if enabled
+                                          (.withLoggingEnabled option {})
+                                          (.withLoggingDisabled option)))]])))
+
+(defn repartitioned
+  "Builds a Kafka Streams `Repartitioned` from DSL options."
+  [{:keys [name key-serde value-serde] :as options}]
+  (let [option (cond
+                 (and key-serde value-serde) (Repartitioned/with key-serde value-serde)
+                 name (Repartitioned/as ^String name)
+                 :else (Repartitioned/numberOfPartitions 1))]
+    (apply-options option options
+                   [[:name (fn [^Repartitioned option ^String name] (.withName option name))]
+                    [:key-serde (fn [^Repartitioned option ^org.apache.kafka.common.serialization.Serde serde]
+                                  (.withKeySerde option serde))]
+                    [:value-serde (fn [^Repartitioned option ^org.apache.kafka.common.serialization.Serde serde]
+                                    (.withValueSerde option serde))]
+                    [:number-of-partitions (fn [^Repartitioned option partitions]
+                                             (.withNumberOfPartitions option partitions))]
+                    [:partition-fn (fn [^Repartitioned option partition-fn]
+                                     (.withStreamPartitioner option (->FnStreamPartitioner partition-fn)))]])))
+
+(defn produced
+  "Builds a Kafka Streams `Produced` from DSL options."
+  [{:keys [name key-serde value-serde] :as options}]
+  (let [option (cond
+                 (and key-serde value-serde) (Produced/with key-serde value-serde)
+                 name (Produced/as ^String name)
+                 :else (Produced/keySerde key-serde))]
+    (apply-options option options
+                   [[:name (fn [^Produced option ^String name] (.withName option name))]
+                    [:key-serde (fn [^Produced option ^org.apache.kafka.common.serialization.Serde serde]
+                                  (.withKeySerde option serde))]
+                    [:value-serde (fn [^Produced option ^org.apache.kafka.common.serialization.Serde serde]
+                                    (.withValueSerde option serde))]
+                    [:partition-fn (fn [^Produced option partition-fn]
+                                     (.withStreamPartitioner option (->FnStreamPartitioner partition-fn)))]])))
+
+(defn consumed
+  "Builds a Kafka Streams `Consumed` from DSL options."
+  [{:keys [name key-serde value-serde] :as options}]
+  (let [option (cond
+                 (and key-serde value-serde) (Consumed/with key-serde value-serde)
+                 name (Consumed/as ^String name)
+                 :else (Consumed/as ^String name))]
+    (apply-options option options
+                   [[:name (fn [^Consumed option ^String name] (.withName option name))]
+                    [:key-serde (fn [^Consumed option ^org.apache.kafka.common.serialization.Serde serde]
+                                  (.withKeySerde option serde))]
+                    [:value-serde (fn [^Consumed option ^org.apache.kafka.common.serialization.Serde serde]
+                                    (.withValueSerde option serde))]
+                    [:timestamp-extractor (fn [^Consumed option extractor]
+                                            (.withTimestampExtractor option extractor))]
+                    [:offset-reset-policy (fn [^Consumed option ^org.apache.kafka.streams.AutoOffsetReset policy]
+                                             (.withOffsetResetPolicy option policy))]])))
+
 (defn topic->consumed
   "Builds a Kafka Streams `Consumed` from a topic config's `:key-serde` and
   `:value-serde`."
   [{:keys [key-serde value-serde]}]
-  (Consumed/with key-serde value-serde))
+  (consumed {:key-serde key-serde :value-serde value-serde}))
 
 (defn topic->produced
   "Builds a Kafka Streams `Produced` from a topic config's serdes, attaching a
   custom stream partitioner when `:partition-fn` is present."
   [{:keys [key-serde value-serde partition-fn]}]
-  (if partition-fn
-    (Produced/with key-serde value-serde (->FnStreamPartitioner partition-fn))
-    (Produced/with key-serde value-serde)))
+  (produced {:key-serde key-serde :value-serde value-serde :partition-fn partition-fn}))
 
 (defn topic->repartitioned
   "Builds a Kafka Streams `Repartitioned` from a topic config's serdes, applying
   `:topic-name` and a `:partition-fn` partitioner when present."
   [{:keys [topic-name key-serde value-serde partition-fn]}]
-  (cond-> (Repartitioned/with key-serde value-serde)
-    topic-name (.withName ^String topic-name)
-    partition-fn (.withStreamPartitioner (->FnStreamPartitioner partition-fn))))
+  (repartitioned {:name topic-name :key-serde key-serde :value-serde value-serde
+                  :partition-fn partition-fn}))
 
 (defn topic->grouped
   "Builds a Kafka Streams `Grouped` from a topic config's `:key-serde` and
   `:value-serde`."
   [{:keys [key-serde value-serde]}]
-  (Grouped/with key-serde value-serde))
+  (grouped {:key-serde key-serde :value-serde value-serde}))
 
 (defn topic->materialized
   "Builds a Kafka Streams `Materialized` store named by `:topic-name`, applying
   the topic config's key/value serdes when present."
   [{:keys [topic-name key-serde value-serde]}]
-  (cond-> (Materialized/as ^String topic-name)
-    key-serde (.withKeySerde key-serde)
-    value-serde (.withValueSerde value-serde)))
+  (materialized {:store-name topic-name :key-serde key-serde :value-serde value-serde}))
 
 (defn suppress-config->suppressed
   "Builds a Kafka Streams `Suppressed` from a suppression config, choosing the
