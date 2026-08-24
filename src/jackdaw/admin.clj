@@ -9,10 +9,11 @@
   (:require
    [jackdaw.data :as jd]
    [manifold.deferred :as d])
-  (:import [java.util Collection Properties]
+  (:import [java.util Collection Optional Properties]
            [org.apache.kafka.clients.admin AdminClient AlterConfigOp
             AlterConfigOp$OpType AlterConfigsResult
-            DescribeTopicsOptions DescribeClusterOptions DescribeConfigsOptions]))
+            DescribeTopicsOptions DescribeClusterOptions DescribeConfigsOptions
+            ListPartitionReassignmentsOptions ListPartitionReassignmentsResult]))
 
 (set! *warn-on-reflection* true)
 
@@ -23,7 +24,19 @@
   (describe-topics* [this topics])
   (describe-configs* [this configs])
   (describe-cluster* [this])
-  (list-topics* [this]))
+  (list-topics* [this])
+  (create-partitions* [this partitions])
+  (describe-consumer-groups* [this group-ids])
+  (list-consumer-group-offsets* [this group-offsets])
+  (describe-acls* [this filter])
+  (create-acls* [this acls])
+  (delete-acls* [this filters])
+  (describe-client-quotas* [this filter])
+  (alter-client-quotas* [this alterations])
+  (describe-log-dirs* [this broker-ids])
+  (alter-partition-reassignments* [this reassignments])
+  (list-partition-reassignments* [this partitions])
+  (describe-metadata-quorum* [this]))
 
 (def client-impl
   {:alter-topics* (fn [this topics]
@@ -51,7 +64,50 @@
                           (jd/datafy (.describeCluster ^AdminClient this (DescribeClusterOptions.)))))
    :list-topics* (fn [this]
                    (d/future
-                     @(.names (.listTopics ^AdminClient this))))})
+                     @(.names (.listTopics ^AdminClient this))))
+   :create-partitions* (fn [this partitions]
+                         (d/future
+                           @(.all (.createPartitions ^AdminClient this ^java.util.Map partitions))))
+   :describe-consumer-groups* (fn [this group-ids]
+                                (d/future
+                                  @(.all (.describeConsumerGroups ^AdminClient this ^Collection group-ids))))
+   :list-consumer-group-offsets* (fn [this group-offsets]
+                                   (d/future
+                                     @(.all (.listConsumerGroupOffsets ^AdminClient this ^java.util.Map group-offsets))))
+   :describe-acls* (fn [this filter]
+                     (d/future
+                       @(.values (.describeAcls ^AdminClient this filter))))
+   :create-acls* (fn [this acls]
+                   (d/future
+                     @(.all (.createAcls ^AdminClient this ^Collection acls))))
+   :delete-acls* (fn [this filters]
+                   (d/future
+                     @(.all (.deleteAcls ^AdminClient this ^Collection filters))))
+   :describe-client-quotas* (fn [this filter]
+                              (d/future
+                                @(.entities (.describeClientQuotas ^AdminClient this filter))))
+   :alter-client-quotas* (fn [this alterations]
+                           (d/future
+                             @(.all (.alterClientQuotas ^AdminClient this ^Collection alterations))))
+   :describe-log-dirs* (fn [this broker-ids]
+                         (d/future
+                           @(.allDescriptions (.describeLogDirs ^AdminClient this ^Collection broker-ids))))
+   :alter-partition-reassignments* (fn [this reassignments]
+                                     (d/future
+                                       @(.all (.alterPartitionReassignments ^AdminClient this ^java.util.Map reassignments))))
+   :list-partition-reassignments* (fn [this partitions]
+                                    (d/future
+                                      @(.reassignments
+                                        ^ListPartitionReassignmentsResult
+                                        (.listPartitionReassignments
+                                         ^AdminClient this
+                                         ^Optional (if (nil? partitions)
+                                                     (Optional/empty)
+                                                     (Optional/of ^java.util.Set (set partitions)))
+                                         (ListPartitionReassignmentsOptions.)))))
+   :describe-metadata-quorum* (fn [this]
+                                (d/future
+                                  @(.quorumInfo (.describeMetadataQuorum ^AdminClient this))))})
 
 (extend AdminClient
   Client
@@ -237,3 +293,86 @@
   {:pre [(client? client)]}
   (-> @(describe-configs* client [(jd/->broker-resource (str broker-id))])
       vals first jd/datafy))
+
+(defn create-partitions!
+  "Increase the partition count for topics using Kafka `NewPartitions` values."
+  [^AdminClient client partitions]
+  {:pre [(client? client)
+         (map? partitions)]}
+  @(create-partitions* client partitions))
+
+(defn describe-consumer-groups
+  "Describe the named consumer groups."
+  [^AdminClient client group-ids]
+  {:pre [(client? client)
+         (sequential? group-ids)]}
+  @(describe-consumer-groups* client group-ids))
+
+(defn list-consumer-group-offsets
+  "List offsets for consumer groups using Kafka offset request specs."
+  [^AdminClient client group-offsets]
+  {:pre [(client? client)
+         (map? group-offsets)]}
+  @(list-consumer-group-offsets* client group-offsets))
+
+(defn describe-acls
+  "Describe ACL bindings matching a Kafka ACL filter."
+  [^AdminClient client filter]
+  {:pre [(client? client)]}
+  @(describe-acls* client filter))
+
+(defn create-acls!
+  "Create Kafka ACL bindings."
+  [^AdminClient client acls]
+  {:pre [(client? client)
+         (sequential? acls)]}
+  @(create-acls* client acls))
+
+(defn delete-acls!
+  "Delete Kafka ACL bindings matching the supplied filters."
+  [^AdminClient client filters]
+  {:pre [(client? client)
+         (sequential? filters)]}
+  @(delete-acls* client filters))
+
+(defn describe-client-quotas
+  "Describe client quotas matching a Kafka quota filter."
+  [^AdminClient client filter]
+  {:pre [(client? client)]}
+  @(describe-client-quotas* client filter))
+
+(defn alter-client-quotas!
+  "Alter Kafka client quotas using `ClientQuotaAlteration` values."
+  [^AdminClient client alterations]
+  {:pre [(client? client)
+         (sequential? alterations)]}
+  @(alter-client-quotas* client alterations))
+
+(defn describe-log-dirs
+  "Describe log directories for the supplied broker IDs."
+  [^AdminClient client broker-ids]
+  {:pre [(client? client)
+         (sequential? broker-ids)]}
+  @(describe-log-dirs* client broker-ids))
+
+(defn alter-partition-reassignments!
+  "Alter partition reassignments using a TopicPartition-to-Optional map."
+  [^AdminClient client reassignments]
+  {:pre [(client? client)
+         (map? reassignments)]}
+  @(alter-partition-reassignments* client reassignments))
+
+(defn list-partition-reassignments
+  "List partition reassignments, optionally restricted to partitions."
+  ([^AdminClient client]
+   (list-partition-reassignments client nil))
+  ([^AdminClient client partitions]
+   {:pre [(client? client)
+          (or (nil? partitions) (sequential? partitions))]}
+   @(list-partition-reassignments* client partitions)))
+
+(defn describe-metadata-quorum
+  "Describe the KRaft metadata quorum."
+  [^AdminClient client]
+  {:pre [(client? client)]}
+  @(describe-metadata-quorum* client))
