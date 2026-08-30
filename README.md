@@ -38,7 +38,7 @@ Jackdaw resolves Confluent artifacts from the Confluent Maven repository. Add
 
 ## Supported versions
 
-Jackdaw 1.3.6 requires **Clojure >= 1.10**, **JDK 17+**, and **Apache Kafka 4.x** /
+Jackdaw 1.4.0 requires **Clojure >= 1.10**, **JDK 17+**, and **Apache Kafka 4.x** /
 **Confluent Platform 8.x** brokers. (The `datafy` protocol sets the Clojure floor. Clojure
 1.10 introduced that protocol.)
 
