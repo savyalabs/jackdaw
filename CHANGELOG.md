@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1] - 2026-08-30
+
+### Fixed
+
+- Correct the README's supported-versions note, which still referred to Jackdaw
+  1.3.6.
+
 ## [1.4.0] - 2026-08-24
 
 ### Added
