@@ -53,7 +53,7 @@ services:
       retries: 12
 
   kafka-rest:
-    image: confluentinc/cp-kafka-rest:8.3.0
+    image: confluentinc/cp-kafka-rest:8.3.1
     hostname: kafka-rest
     container_name: kafka-rest
     depends_on:
