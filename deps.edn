@@ -9,10 +9,10 @@
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
         manifold/manifold {:mvn/version "0.5.0"}
         danlentz/clj-uuid {:mvn/version "0.2.5" :exclusions [primitive-math/primitive-math]}
-        io.confluent/kafka-schema-registry-client {:mvn/version "8.3.0"
+        io.confluent/kafka-schema-registry-client {:mvn/version "8.3.1"
                                                     :exclusions [com.fasterxml.jackson.core/jackson-databind]}
-        io.confluent/kafka-avro-serializer {:mvn/version "8.3.0"}
-        io.confluent/kafka-json-schema-serializer {:mvn/version "8.3.0"}
+        io.confluent/kafka-avro-serializer {:mvn/version "8.3.1"}
+        io.confluent/kafka-json-schema-serializer {:mvn/version "8.3.1"}
         org.apache.kafka/kafka-clients {:mvn/version "4.3.1"}
         org.apache.kafka/kafka-streams {:mvn/version "4.3.1"}
         org.apache.kafka/kafka-streams-test-utils {:mvn/version "4.3.1"}
