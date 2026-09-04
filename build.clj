@@ -41,12 +41,12 @@
                 :version version
                 :basis @basis
                 :src-dirs ["src"]
-                :scm {:url "https://github.com/jsavyasachi/jackdaw"
-                      :connection "scm:git:https://github.com/jsavyasachi/jackdaw.git"
-                      :developerConnection "scm:git:ssh://git@github.com/jsavyasachi/jackdaw.git"
+                :scm {:url "https://github.com/savyalabs/jackdaw"
+                      :connection "scm:git:https://github.com/savyalabs/jackdaw.git"
+                      :developerConnection "scm:git:ssh://git@github.com/savyalabs/jackdaw.git"
                       :tag (str "v" version)}
                 :pom-data [[:description "A Clojure library for the Apache Kafka distributed streaming platform."]
-                           [:url "https://github.com/jsavyasachi/jackdaw"]
+                           [:url "https://github.com/savyalabs/jackdaw"]
                            [:licenses
                             [:license
                              [:name "BSD 3-clause"]

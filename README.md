@@ -2,8 +2,8 @@
 
 [![Clojars Project](https://img.shields.io/clojars/v/net.clojars.savya/jackdaw.svg)](https://clojars.org/net.clojars.savya/jackdaw)
 [![cljdoc](https://cljdoc.org/badge/net.clojars.savya/jackdaw)](https://cljdoc.org/d/net.clojars.savya/jackdaw/CURRENT)
-[![test](https://github.com/jsavyasachi/jackdaw/actions/workflows/test.yml/badge.svg)](https://github.com/jsavyasachi/jackdaw/actions/workflows/test.yml)
-[![Renovate](https://img.shields.io/badge/Renovate-enabled-1A1F6C?style=flat&logo=renovate&logoColor=fff)](https://github.com/jsavyasachi/jackdaw/issues?q=is%3Aissue+Dependency+Dashboard)
+[![test](https://github.com/savyalabs/jackdaw/actions/workflows/test.yml/badge.svg)](https://github.com/savyalabs/jackdaw/actions/workflows/test.yml)
+[![Renovate](https://img.shields.io/badge/Renovate-enabled-1A1F6C?style=flat&logo=renovate&logoColor=fff)](https://github.com/savyalabs/jackdaw/issues?q=is%3Aissue+Dependency+Dashboard)
 
 Jackdaw is a Clojure library for the Apache Kafka distributed streaming platform. With Jackdaw, you can create and list topics with the AdminClient API. You can produce and consume records with the Producer and Consumer APIs. You can create stream processing applications with the Streams API. Jackdaw also contains functions to serialize and deserialize records as JSON, EDN, and Avro, and functions to write unit tests and integration tests.
 
@@ -52,14 +52,14 @@ and error handling.
 
 ## Examples
 
-- [Pipe](https://github.com/jsavyasachi/jackdaw/tree/main/examples/pipe)
-- [Word Count](https://github.com/jsavyasachi/jackdaw/tree/main/examples/word-count)
-- [Simple Ledger](https://github.com/jsavyasachi/jackdaw/tree/main/examples/simple-ledger)
-- [Roll Dice](https://github.com/jsavyasachi/jackdaw/tree/main/examples/rolldice)
+- [Pipe](https://github.com/savyalabs/jackdaw/tree/main/examples/pipe)
+- [Word Count](https://github.com/savyalabs/jackdaw/tree/main/examples/word-count)
+- [Simple Ledger](https://github.com/savyalabs/jackdaw/tree/main/examples/simple-ledger)
+- [Roll Dice](https://github.com/savyalabs/jackdaw/tree/main/examples/rolldice)
 
 ## Contributing
 
-We welcome any thoughts or patches - [open an issue](https://github.com/jsavyasachi/jackdaw/issues) on this fork.
+We welcome any thoughts or patches - [open an issue](https://github.com/savyalabs/jackdaw/issues) on this fork.
 
 Run the broker-free unit suite:
 
